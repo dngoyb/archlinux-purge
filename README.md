@@ -2,6 +2,8 @@
 
 A comprehensive Arch Linux utility to **completely uninstall an application** and wipe every trace it left behind — config, cache, logs, saved credentials, desktop entries, Flatpak/Snap installs, and orphaned dependencies.
 
+**Now with interactive mode** — search for packages visually and select which one to remove!
+
 ---
 
 ## What it does
@@ -22,6 +24,16 @@ The script is smart about name matching: it derives search terms from the packag
 
 ---
 
+## Features
+
+- **🔍 Interactive Mode** — Don't remember the exact package name? Run without arguments and search interactively
+- **🛡️ Safety First** — Only shows installed packages, confirms before removal, dry-run support
+- **📋 Package Listing** — View all installed packages with `--list`
+- **🔮 Dry Run** — Preview what would be removed with `--dry-run` (no actual changes)
+- **🧹 Complete Cleanup** — Removes package, config files, cache, credentials, and orphaned deps
+
+---
+
 ## Requirements
 
 - Arch Linux (or any Arch-based distro — Manjaro, EndeavourOS, CachyOS, etc.)
@@ -38,19 +50,61 @@ sudo pacman -S libsecret
 
 ## Usage
 
+### Interactive Mode (Recommended)
+
+Run without arguments to search for packages interactively:
+
 ```bash
-./arch-purge.sh <package-name>
+arch-purge
 ```
+
+Then type part of the package name and press Enter:
+```
+Search for app to remove: spotify
+Found packages:
+   1) spotify
+   2) spotify-adblock-git
+   0) Cancel
+
+Select package to remove [0-2]: 1
+```
+
+### Direct Removal
+
+Remove a specific package by name:
+
+```bash
+arch-purge firefox
+arch-purge discord
+arch-purge visual-studio-code-bin
+```
+
+### Command-Line Options
+
+| Flag | Description |
+|------|-------------|
+| `-h, --help` | Show detailed help message |
+| `-l, --list` | List all installed packages |
+| `-d, --dry-run` | Preview what would be removed (no changes) |
+| `-i, --interactive` | Force interactive mode |
 
 ### Examples
 
 ```bash
-./arch-purge.sh firefox
-./arch-purge.sh discord
-./arch-purge.sh spotify-launcher
-./arch-purge.sh code
-./arch-purge.sh visual-studio-code-bin
-./arch-purge.sh steam
+# Show help
+arch-purge --help
+
+# List all installed packages
+arch-purge --list
+
+# Preview what would be removed for firefox (safe)
+arch-purge --dry-run firefox
+
+# Interactive search mode
+arch-purge --interactive
+
+# Remove spotify directly
+arch-purge spotify
 ```
 
 ---
@@ -69,8 +123,16 @@ sudo chmod +x /usr/local/bin/arch-purge
 Now you can call it from any terminal:
 
 ```bash
+# Interactive mode
+arch-purge
+
+# Direct removal
 arch-purge firefox
 arch-purge discord
+
+# Other options
+arch-purge --list
+arch-purge --dry-run spotify
 ```
 
 To remove it:
@@ -86,7 +148,7 @@ If you prefer to keep the script in its current location, add the directory to y
 For **zsh** (edit `~/.zshrc`):
 
 ```bash
-echo 'export PATH="$HOME/Music/purge apps:$PATH"' >> ~/.zshrc
+echo 'export PATH="$HOME/Music/archlinux-purge:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -99,9 +161,19 @@ arch-purge.sh discord
 ### Option C — Shell alias (quickest, no PATH changes)
 
 ```bash
-echo "alias arch-purge='bash \"$HOME/Music/purge apps/arch-purge.sh\"'" >> ~/.zshrc
+echo "alias arch-purge='bash \"$HOME/Music/archlinux-purge/arch-purge.sh\"'" >> ~/.zshrc
 source ~/.zshrc
 ```
+
+---
+
+## Safety Features
+
+- ✅ **Package verification** — Checks that the package is actually installed before attempting removal
+- ✅ **Confirmation prompt** — Asks for confirmation before removing anything
+- ✅ **Dry-run mode** — Preview exactly what would be removed without making changes
+- ✅ **Graceful errors** — If a package isn't found, suggests using `--list` or interactive mode
+- ✅ **Installed-only search** — Interactive mode only shows packages you actually have installed
 
 ---
 
@@ -117,7 +189,7 @@ If you added a **PATH entry** (Option B), remove the line from `~/.zshrc`:
 
 ```bash
 # Open ~/.zshrc in your editor and delete the line:
-# export PATH="$HOME/Music/purge apps:$PATH"
+# export PATH="$HOME/Music/archlinux-purge:$PATH"
 source ~/.zshrc
 ```
 
@@ -125,7 +197,7 @@ If you added an **alias** (Option C), remove the alias from `~/.zshrc`:
 
 ```bash
 # Open ~/.zshrc in your editor and delete the line:
-# alias arch-purge='bash "$HOME/Music/purge apps/arch-purge.sh"'
+# alias arch-purge='bash "$HOME/Music/archlinux-purge/arch-purge.sh"'
 source ~/.zshrc
 ```
 

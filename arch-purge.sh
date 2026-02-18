@@ -27,14 +27,233 @@ warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
 error()   { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
 header()  { echo -e "\n${BOLD}${CYAN}══ $* ══${RESET}"; }
 
+# =============================================================================
+# show_help
+#
+# Displays usage information and available options.
+# =============================================================================
+show_help() {
+    echo -e "${BOLD}Arch Purge - Complete Package Removal Tool${RESET}\n"
+    echo -e "${BOLD}Usage:${RESET}"
+    echo -e "  arch-purge [options] [<package-name>]\n"
+    echo -e "${BOLD}Options:${RESET}"
+    echo -e "  -h, --help          Show this help message"
+    echo -e "  -l, --list          List all installed packages"
+    echo -e "  -d, --dry-run       Preview what would be removed (no actual removal)"
+    echo -e "  -i, --interactive   Force interactive mode\n"
+    echo -e "${BOLD}Examples:${RESET}"
+    echo -e "  arch-purge                    # Interactive mode - search and select"
+    echo -e "  arch-purge firefox            # Remove firefox directly"
+    echo -e "  arch-purge --list             # Show all installed packages"
+    echo -e "  arch-purge --dry-run spotify  # Preview what would be removed\n"
+    echo -e "${BOLD}Interactive Mode:${RESET}"
+    echo -e "  Type part of a package name and press Enter to search."
+    echo -e "  Select a package from the list to remove it."
+    echo -e "  Type 'quit' or 'exit' to cancel.\n"
+    echo -e "${BOLD}Safety Features:${RESET}"
+    echo -e "  - Only shows installed packages"
+    echo -e "  - Confirms before any removal"
+    echo -e "  - Exits gracefully if package not found"
+}
+
+# =============================================================================
+# list_installed_packages
+#
+# Displays all installed packages with descriptions.
+# =============================================================================
+list_installed_packages() {
+    echo -e "${BOLD}${CYAN}=== Installed Packages ===${RESET}\n"
+    
+    local count=0
+    while IFS=' ' read -r pkg version; do
+        if [[ -n "$pkg" ]]; then
+            printf "${GREEN}%3d)${RESET} ${BOLD}%-40s${RESET} %s\n" $((++count)) "$pkg" "$version"
+        fi
+    done < <(pacman -Q 2>/dev/null)
+    
+    echo -e "\n${CYAN}Total: $count packages installed${RESET}"
+    echo -e "${CYAN}Use 'arch-purge <package-name>' to remove a specific package${RESET}"
+    echo -e "${CYAN}Or run 'arch-purge' for interactive mode${RESET}"
+}
+
 # ── Argument check ────────────────────────────────────────────────────────────
-if [[ $# -lt 1 ]]; then
-    echo -e "${BOLD}Usage:${RESET} $0 <package-name>"
-    echo -e "  Example: $0 firefox"
-    exit 1
+# Handle flags and options
+DRY_RUN=false
+LIST_MODE=false
+INTERACTIVE=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -l|--list)
+            LIST_MODE=true
+            shift
+            ;;
+        -d|--dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -i|--interactive)
+            INTERACTIVE=true
+            shift
+            ;;
+        -*)
+            echo -e "${RED}Error: Unknown option '$1'${RESET}"
+            echo -e "${CYAN}Use 'arch-purge --help' for usage information${RESET}"
+            exit 1
+            ;;
+        *)
+            # Package name provided
+            PKG="$1"
+            break
+            ;;
+    esac
+done
+
+# Handle list mode
+if [[ "$LIST_MODE" == true ]]; then
+    list_installed_packages
+    exit 0
 fi
 
-PKG="$1"
+# Interactive mode: if no argument and not already set
+if [[ -z "${PKG:-}" && "$INTERACTIVE" == false ]]; then
+    INTERACTIVE=true
+fi
+
+# =============================================================================
+# search_packages <query> <nameref-results>
+#
+# Searches for packages that start with the given query using pacman and AUR helpers.
+# Returns an array of matching package names.
+# =============================================================================
+search_packages() {
+    local query="$1"
+    local -n _sp_out=$2
+    
+    local -a _found=()
+    local -A _seen=()
+    local max_results=20
+    
+    # Search installed packages only
+    while IFS= read -r pkg; do
+        if [[ -n "$pkg" && -z "${_seen[$pkg]+_}" && ${#_found[@]} -lt $max_results && "$pkg" == "$query"* ]]; then
+            _seen["$pkg"]=1
+            _found+=("$pkg")
+        fi
+    done < <(pacman -Qq 2>/dev/null | grep -i "^$query" || true)
+    
+    # Search AUR installed packages
+    for aur_helper in yay paru; do
+        if command -v "$aur_helper" &>/dev/null; then
+            while IFS= read -r pkg; do
+                if [[ -n "$pkg" && -z "${_seen[$pkg]+_}" && ${#_found[@]} -lt $max_results && "$pkg" == "$query"* ]]; then
+                    _seen["$pkg"]=1
+                    _found+=("$pkg")
+                fi
+            done < <("$aur_helper" -Qq 2>/dev/null | grep -i "^$query" || true)
+        fi
+    done
+    
+    _sp_out=("${_found[@]}")
+}
+
+# =============================================================================
+# select_package <packages-array>
+#
+# Displays a selection menu for the user to choose a package to remove.
+# Returns the selected package name.
+# =============================================================================
+select_package() {
+    local -n _sp_pkgs=$1
+    local _sp_resultvar="$2"
+    
+    if [[ ${#_sp_pkgs[@]} -eq 0 ]]; then
+        echo -e "${RED}No packages found matching your search.${RESET}" >&2
+        return 1
+    fi
+    
+    echo -e "\n${BOLD}${CYAN}Found packages:${RESET}" >&2
+    for i in "${!_sp_pkgs[@]}"; do
+        printf "  ${GREEN}%2d)${RESET} %s\n" $((i+1)) "${_sp_pkgs[i]}" >&2
+    done
+    echo -e "  ${RED} 0)${RESET} Cancel" >&2
+    
+    if [[ ${#_sp_pkgs[@]} -eq 20 ]]; then
+        echo -e "\n${YELLOW}Note: Showing first 20 results. Try a more specific search term if needed.${RESET}" >&2
+    fi
+    echo >&2
+    
+    while true; do
+        read -rp "$(echo -e "${CYAN}Select package to remove [0-${#_sp_pkgs[@]}]:${RESET} ")" choice
+        
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+            if [[ "$choice" -eq 0 ]]; then
+                echo -e "${YELLOW}Cancelled.${RESET}" >&2
+                exit 0
+            elif [[ "$choice" -ge 1 && "$choice" -le ${#_sp_pkgs[@]} ]]; then
+                selected="${_sp_pkgs[$((choice-1))]}"
+                echo -e "${GREEN}Selected: $selected${RESET}" >&2
+                printf -v "$2" '%s' "$selected"
+                return 0
+            fi
+        fi
+        echo -e "${RED}Invalid choice. Please enter a number between 0 and ${#_sp_pkgs[@]}.${RESET}" >&2
+    done
+}
+
+# =============================================================================
+# interactive_mode
+#
+# Handles the interactive search and selection workflow.
+# =============================================================================
+interactive_mode() {
+    echo -e "${BOLD}${CYAN}=== Arch Linux Package Purge - Interactive Mode ===${RESET}"
+    echo -e "${CYAN}Type part of an app name and press Enter to search for packages.${RESET}"
+    echo -e "${CYAN}Type 'quit' or 'exit' to cancel.${RESET}"
+    echo
+    
+    while true; do
+        read -rp "$(echo -e "${YELLOW}Search for app to remove: ${RESET}")" query
+        
+        # Handle exit commands
+        case "${query,,}" in
+            quit|exit|q)
+                echo -e "${YELLOW}Cancelled.${RESET}"
+                exit 0
+                ;;
+            "")
+                echo -e "${RED}Please enter a search term.${RESET}"
+                continue
+                ;;
+        esac
+        
+        # Search for packages with feedback
+        echo -e "${CYAN}Searching for installed packages starting with '$query'...${RESET}"
+        FOUND=()
+        search_packages "$query" FOUND
+        
+        # If no packages found, exit gracefully
+        if [[ ${#FOUND[@]} -eq 0 ]]; then
+            echo -e "${YELLOW}No installed packages found matching '$query'.${RESET}"
+            echo -e "${CYAN}Try a different search term or 'quit' to exit.${RESET}\n"
+            continue
+        fi
+        
+        # Show results and get selection
+        select_package FOUND selected
+        if [[ $? -eq 0 && -n "$selected" ]]; then
+            PKG="$selected"
+            return 0
+        fi
+        
+        # If we get here, user cancelled - exit gracefully
+        exit 0
+    done
+}
 
 # =============================================================================
 # build_search_terms <pkg> <nameref-array>
@@ -117,6 +336,75 @@ discover_paths() {
                       -iname "*${_term}*" -print0 2>/dev/null || true)
     done
 }
+
+# ── Handle interactive mode or proceed with given package ────────────────────────
+if [[ "$INTERACTIVE" == true ]]; then
+    interactive_mode
+fi
+
+# Validate that we have a package to remove
+if [[ -z "${PKG:-}" ]]; then
+    echo -e "${RED}Error: No package specified. Use interactive mode or provide a package name.${RESET}"
+    echo -e "${CYAN}Usage: $0 [<package-name>]${RESET}"
+    exit 1
+fi
+
+# Check if package is actually installed
+if ! pacman -Q "$PKG" &>/dev/null; then
+    # Check via AUR helpers
+    found_in_aur=false
+    for aur_helper in yay paru; do
+        if command -v "$aur_helper" &>/dev/null && "$aur_helper" -Q "$PKG" &>/dev/null 2>&1; then
+            found_in_aur=true
+            break
+        fi
+    done
+    
+    if [[ "$found_in_aur" == false ]]; then
+        echo -e "${RED}Error: Package '$PKG' is not installed on this system.${RESET}"
+        echo -e "${CYAN}Use 'arch-purge --list' to see installed packages${RESET}"
+        echo -e "${CYAN}Or run 'arch-purge' to search for packages to remove${RESET}"
+        exit 1
+    fi
+fi
+
+# Dry run mode - preview only
+if [[ "$DRY_RUN" == true ]]; then
+    echo -e "\n${BOLD}${YELLOW}=== DRY RUN MODE ===${RESET}"
+    echo -e "${YELLOW}Showing what would be removed for '$PKG':${RESET}\n"
+    
+    # Show package info
+    echo -e "${BOLD}Package Info:${RESET}"
+    pacman -Qi "$PKG" 2>/dev/null | grep -E "(Name|Description|Version|Size)" || true
+    
+    # Show search terms
+    SEARCH_TERMS=()
+    build_search_terms "$PKG" SEARCH_TERMS
+    echo -e "\n${BOLD}Search terms for file removal:${RESET} ${SEARCH_TERMS[*]}"
+    
+    # Preview discovered paths
+    DISCOVERED=()
+    discover_paths SEARCH_TERMS DISCOVERED
+    if [[ ${#DISCOVERED[@]} -gt 0 ]]; then
+        echo -e "\n${BOLD}User data that would be removed:${RESET}"
+        for p in "${DISCOVERED[@]}"; do
+            echo "  - $p"
+        done
+    else
+        echo -e "\n${BOLD}User data:${RESET} No user-level data directories found"
+    fi
+    
+    echo -e "\n${GREEN}Dry run complete. No changes were made.${RESET}"
+    exit 0
+fi
+
+# Confirm before proceeding
+echo -e "\n${YELLOW}${BOLD}WARNING: This will completely remove '$PKG' and all associated data!${RESET}"
+read -rp "$(echo -e "${YELLOW}Are you sure you want to continue? [y/N]:${RESET} ")" confirm
+if [[ "${confirm,,}" != "y" ]]; then
+    echo -e "${CYAN}Cancelled. No changes were made.${RESET}"
+    exit 0
+fi
 
 # ── Build search terms ────────────────────────────────────────────────────────
 SEARCH_TERMS=()
