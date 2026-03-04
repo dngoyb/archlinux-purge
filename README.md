@@ -109,18 +109,31 @@ arch-purge spotify
 
 ---
 
-## Adding to the system (install system-wide)
+## Adding to the system (install)
 
 To run `arch-purge` from anywhere without specifying the full path:
 
-### Option A — Copy to `/usr/local/bin` (recommended)
+### Option A — Install via `make` (recommended)
+
+This repository ships with a `Makefile` that installs `arch-purge` as a system-wide command.
 
 ```bash
-sudo cp arch-purge.sh /usr/local/bin/arch-purge
-sudo chmod +x /usr/local/bin/arch-purge
+# Install to /usr/local/bin (system-wide, requires sudo)
+sudo make install
+
+# Or install to /usr/bin instead
+sudo make PREFIX=/usr install
 ```
 
-Now you can call it from any terminal:
+To install only for your user (no sudo), use a user prefix, e.g.:
+
+```bash
+make PREFIX="$HOME/.local" install
+```
+
+This will place the binary at `~/.local/bin/arch-purge` (ensure `~/.local/bin` is on your `PATH`).
+
+Once installed you can call it from any terminal:
 
 ```bash
 # Interactive mode
@@ -135,13 +148,16 @@ arch-purge --list
 arch-purge --dry-run spotify
 ```
 
-To remove it:
+### Option B — Copy to `/usr/local/bin` manually
+
+If you prefer not to use `make`, you can copy the script yourself:
 
 ```bash
-sudo rm /usr/local/bin/arch-purge
+sudo cp arch-purge.sh /usr/local/bin/arch-purge
+sudo chmod +x /usr/local/bin/arch-purge
 ```
 
-### Option B — Add the script's directory to your `PATH`
+### Option C — Add the script's directory to your `PATH`
 
 If you prefer to keep the script in its current location, add the directory to your shell's `PATH`.
 
@@ -158,7 +174,7 @@ Then call it as:
 arch-purge.sh discord
 ```
 
-### Option C — Shell alias (quickest, no PATH changes)
+### Option D — Shell alias (quickest, no PATH changes)
 
 ```bash
 echo "alias arch-purge='bash \"$HOME/Music/archlinux-purge/arch-purge.sh\"'" >> ~/.zshrc
@@ -179,13 +195,19 @@ source ~/.zshrc
 
 ## Removing from the system (uninstall)
 
-If you installed via **Option A**, remove the binary from `/usr/local/bin`:
+If you installed via **make**, from inside the repo run:
+
+```bash
+sudo make uninstall
+```
+
+If you installed manually to `/usr/local/bin`, remove the binary:
 
 ```bash
 sudo rm /usr/local/bin/arch-purge
 ```
 
-If you added a **PATH entry** (Option B), remove the line from `~/.zshrc`:
+If you added a **PATH entry** (Option C), remove the line from `~/.zshrc`:
 
 ```bash
 # Open ~/.zshrc in your editor and delete the line:
@@ -193,7 +215,7 @@ If you added a **PATH entry** (Option B), remove the line from `~/.zshrc`:
 source ~/.zshrc
 ```
 
-If you added an **alias** (Option C), remove the alias from `~/.zshrc`:
+If you added an **alias** (Option D), remove the alias from `~/.zshrc`:
 
 ```bash
 # Open ~/.zshrc in your editor and delete the line:
